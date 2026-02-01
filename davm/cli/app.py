@@ -9,17 +9,24 @@ from pathlib import Path
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.styles import Style
-from rich.console import Console
+from rich.console import Console, Group
 from rich.live import Live
 from rich.markdown import Markdown
 from rich.panel import Panel
+from rich.spinner import Spinner
 from rich.table import Table
+from rich.text import Text
 
 from davm.core.mech import DAVM, PilotType
 
 
 # Rich console for pretty output
 console = Console()
+
+# Stream markers for thinking output
+THINK_START_TOKEN = "[[DAVM_THINK_START]]"
+THINK_END_TOKEN = "[[DAVM_THINK_END]]"
+THINK_CHUNK_TOKEN = "[[DAVM_THINK_CHUNK]]"
 
 # Custom prompt style
 prompt_style = Style.from_dict({
@@ -79,6 +86,7 @@ def print_help():
         ("/switch <pilot>", "Switch pilot (anthropic/ollama)"),
         ("/model <name>", "Switch to specific model"),
         ("/autonomy <level>", "Set autonomy level (ask/semi/full)"),
+        ("/thinking <on|off>", "Toggle thinking output in CLI"),
         ("/clear", "Clear conversation history"),
         ("/history", "Show conversation history"),
         ("", ""),
@@ -585,6 +593,9 @@ async def handle_command(command: str, mech: DAVM) -> bool:
         else:
             mech.set_autonomy_level(arg)
             console.print(f"[green]Autonomy level set to: {arg}[/green]")
+
+    elif cmd == "/thinking":
+        handle_thinking_command(arg)
     
     elif cmd == "/clear":
         mech.clear_history()
@@ -615,6 +626,9 @@ async def handle_command(command: str, mech: DAVM) -> bool:
 
 # Global flag for agent mode
 _agent_mode_enabled = False
+
+# Global flag for thinking output
+_show_thinking_enabled = False
 
 
 async def handle_agent_command(args: str | None, mech: DAVM) -> bool:
@@ -653,17 +667,73 @@ def is_agent_mode() -> bool:
     return _agent_mode_enabled
 
 
+def handle_thinking_command(arg: str | None) -> None:
+    """Handle /thinking command for showing/hiding thought output."""
+    global _show_thinking_enabled
+
+    if not arg:
+        status = "ON" if _show_thinking_enabled else "OFF"
+        console.print(f"Thinking output: [cyan]{status}[/cyan]")
+        console.print("Use /thinking on or /thinking off")
+        return
+
+    if arg.lower() == "on":
+        _show_thinking_enabled = True
+        console.print("[green]Thinking output enabled.[/green]")
+        return
+
+    if arg.lower() == "off":
+        _show_thinking_enabled = False
+        console.print("[yellow]Thinking output disabled (spinner only).[/yellow]")
+        return
+
+    console.print("[red]Usage: /thinking <on|off>[/red]")
+
+
 async def stream_response(mech: DAVM, message: str):
     """Stream a response from the mech with live display."""
     full_response = ""
+    thinking_response = ""
+    inside_thought = False
+    pending_think_chunk = False
     
     try:
+        def build_renderable() -> Group:
+            parts = [Markdown(full_response or "")]
+            if _show_thinking_enabled and thinking_response:
+                parts.append(Text(f"Thinking:\n{thinking_response}", style="dim"))
+            elif inside_thought:
+                parts.append(Spinner("dots", text="Thinking..."))
+            return Group(*parts)
+
         # Use live display for streaming
         with Live(console=console, refresh_per_second=10) as live:
             async for chunk in mech.chat_stream(message):
+                if chunk == THINK_START_TOKEN:
+                    inside_thought = True
+                    pending_think_chunk = False
+                    live.update(build_renderable())
+                    continue
+
+                if chunk == THINK_END_TOKEN:
+                    inside_thought = False
+                    pending_think_chunk = False
+                    live.update(build_renderable())
+                    continue
+
+                if chunk == THINK_CHUNK_TOKEN:
+                    pending_think_chunk = True
+                    continue
+
+                if pending_think_chunk:
+                    if _show_thinking_enabled:
+                        thinking_response += chunk
+                    pending_think_chunk = False
+                    live.update(build_renderable())
+                    continue
+
                 full_response += chunk
-                # Display as markdown for nice formatting
-                live.update(Markdown(full_response))
+                live.update(build_renderable())
         
         # Final newline after streaming
         console.print()
@@ -713,6 +783,8 @@ async def run_cli():
     
     # Create the mech
     mech = DAVM()
+    global _show_thinking_enabled
+    _show_thinking_enabled = mech._settings.davm_show_thinking
     
     # Try to activate with default settings
     console.print("[yellow]Initializing DAVM...[/yellow]")
