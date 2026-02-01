@@ -239,6 +239,11 @@ class OllamaPilot(BasePilot):
             inside_thought = False
             buffer = ""
             full_response = ""
+            think_start = "<think>"
+            think_end = "</think>"
+            think_start_token = "[[DAVM_THINK_START]]"
+            think_end_token = "[[DAVM_THINK_END]]"
+            think_chunk_token = "[[DAVM_THINK_CHUNK]]"
 
             async for chunk in await self._client.chat(
                 model=self._current_model,
@@ -254,28 +259,52 @@ class OllamaPilot(BasePilot):
                     continue
 
                 buffer += content
-                
-                # Check entry/exit of thought mode
-                if "<think>" in buffer and not inside_thought:
+
+                while buffer:
+                    if inside_thought:
+                        end_idx = buffer.find(think_end)
+                        if end_idx == -1:
+                            if buffer:
+                                yield think_chunk_token
+                                yield buffer
+                                buffer = ""
+                            break
+
+                        thought_text = buffer[:end_idx]
+                        if thought_text:
+                            yield think_chunk_token
+                            yield thought_text
+                        buffer = buffer[end_idx + len(think_end):]
+                        inside_thought = False
+                        yield think_end_token
+                        continue
+
+                    start_idx = buffer.find(think_start)
+                    if start_idx == -1:
+                        if buffer:
+                            yield buffer
+                            full_response += buffer
+                            buffer = ""
+                        break
+
+                    normal_text = buffer[:start_idx]
+                    if normal_text:
+                        yield normal_text
+                        full_response += normal_text
+
+                    buffer = buffer[start_idx + len(think_start):]
                     inside_thought = True
-                
-                if "</think>" in buffer and inside_thought:
-                    # Clear thought from buffer, keep the rest
-                    _, remaining = buffer.split("</think>", 1)
-                    buffer = remaining
-                    inside_thought = False
-                
-                # Yield only if we are not thinking and not potentially starting a tag
-                if not inside_thought:
-                    if "<" not in buffer:
-                        yield buffer
-                        full_response += buffer
-                        buffer = ""
+                    yield think_start_token
+                    continue
             
             # Flush remaining buffer
             if buffer and not inside_thought:
                 yield buffer
                 full_response += buffer
+                buffer = ""
+
+            if inside_thought:
+                yield think_end_token
 
             # Update history with clean output
             clean_full = self._clean_thinking(full_response)

@@ -22,13 +22,18 @@ class Settings(BaseSettings):
 
     # Default pilot and models
     davm_default_pilot: Literal["anthropic", "ollama"] = Field(
-        default="anthropic", description="Default pilot to use"
+        default="ollama", description="Default pilot to use"
     )
     davm_anthropic_model: str = Field(
         default="claude-sonnet-4-20250514", description="Default Anthropic model"
     )
     davm_ollama_model: str = Field(
-        default="deepseek-r1", description="Default Ollama model"
+        default="qwen3-v1:8b", description="Default Ollama model"
+    )
+
+    # Thinking output (reasoning models)
+    davm_show_thinking: bool = Field(
+        default=False, description="Show thinking output in CLI"
     )
 
     # Ollama configuration

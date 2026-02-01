@@ -47,6 +47,7 @@ davm
 /switch <pilot>    - Switch pilot (anthropic/ollama)
 /model <name>      - Switch to specific model
 /autonomy <level>  - Set autonomy (ask/semi/full)
+/thinking <on|off> - Show/hide thinking output
 /clear             - Clear conversation history
 
 # Memory commands:
@@ -164,6 +165,9 @@ DAVM_ALLOWED_PATHS=~
 
 # Autonomy level
 DAVM_AUTONOMY_LEVEL=semi
+
+# Thinking output in CLI
+DAVM_SHOW_THINKING=false
 
 # Storage
 DAVM_DATA_DIR=./data
