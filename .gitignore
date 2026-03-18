@@ -23,7 +23,7 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-
+.cli_history
 # Virtual environments
 venv/
 .venv/
