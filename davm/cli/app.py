@@ -51,7 +51,7 @@ def print_banner():
     ║                                                              ║
     ╚══════════════════════════════════════════════════════════════╝
     """
-    console.print(banner, style="cyan")
+    console.print(banner, style="green")
 
 
 def load_instruction_booklet() -> str | None:
